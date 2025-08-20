@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Required for SharedArrayBuffer, which WebContainer API needs -->
+    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
+    <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
+    <title>CASSA VEGAS: Command Console</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+      html {
+        background: url('https://images.pexels.com/photos/3274903/pexels-photo-3274903.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2') no-repeat center center fixed;
+        background-size: cover;
+      }
+      body {
+        font-family: 'IBM Plex Mono', monospace;
+        background-color: rgba(13, 13, 13, 0.4);
+      }
+      @keyframes blink {
+        50% { border-color: transparent; }
+      }
+      .cursor-blink::after {
+        content: '_';
+        animation: blink 1s step-start infinite;
+        font-weight: bold;
+        margin-left: 2px;
+      }
+      
+      /* Custom Neon Scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #0a0a0a;
+      }
+      ::-webkit-scrollbar-thumb {
+        background-color: #ffffff;
+        border-radius: 4px;
+        box-shadow: 0 0 3px rgba(255, 255, 255, 0.5), 0 0 5px rgba(255, 255, 255, 0.4);
+      }
+       ::-webkit-scrollbar-thumb:hover {
+        background-color: #ffffff;
+        box-shadow: 0 0 5px rgba(255, 255, 255, 0.8), 0 0 8px rgba(255, 255, 255, 0.6);
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.1.0",
+    "react/": "https://esm.sh/react@^19.1.0/",
+    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.8.0",
+    "openai": "https://esm.sh/openai@^4.52.7",
+    "@webcontainer/api": "https://esm.sh/@webcontainer/api@^1.1.9",
+    "jszip": "https://esm.sh/jszip@^3.10.1"
+  }
+}
+</script>
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'neon-pink': '#f0f',
+            'neon-cyan': '#0ff',
+            'neon-lime': '#3f3',
+            'neon-purple': '#a0f',
+            'dark-bg': '#0d0d0d',
+          },
+          boxShadow: {
+            'neon-cyan': '0 0 3px #0ff, 0 0 7px #0ff, 0 0 12px #0ff',
+            'neon-pink': '0 0 3px #f0f, 0 0 7px #f0f, 0 0 12px #f0f',
+            'neon-lime': '0 0 3px #3f3, 0 0 7px #3f3, 0 0 12px #3f3',
+            'neon-purple': '0 0 3px #a0f, 0 0 7px #a0f, 0 0 12px #a0f',
+          },
+          keyframes: {
+            pulse: {
+                '0%, 100%': { transform: 'scale(1)', opacity: 1 },
+                '50%': { transform: 'scale(1.05)', opacity: 0.85 },
+            },
+          },
+          animation: {
+            pulse: 'pulse 3s ease-in-out infinite',
+          }
+        }
+      }
+    }
+  </script>
+</head>
+  <body class="text-gray-300">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

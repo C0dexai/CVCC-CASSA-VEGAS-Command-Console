@@ -1,0 +1,6 @@
+{
+  "name": "CVCC-CASSA VEGAS: Command Console",
+  "description": "An interactive command console for project management. Communicate directly with the CASSA VEGAS AI family to execute tasks, review designs, and query for information.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
