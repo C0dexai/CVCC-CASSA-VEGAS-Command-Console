@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import FileTree from './FileTree';
 import { FileSystemNode, WebContainerStatus, VectorIndexStatus, Agent } from '../types';
@@ -6,11 +7,23 @@ import { webcontainerService } from '../services/webcontainerService';
 import { performSemanticSearch } from '../services/geminiService';
 import Spinner from './Spinner';
 import CodeBlock from './CodeBlock';
+import SyncStatusIndicator from './SyncStatusIndicator';
+import CollaboratorCursors from './CollaboratorCursors';
 
 interface FileExplorerProps {
     webContainerStatus: WebContainerStatus;
     agent: Agent;
 }
+
+type Collaborator = {
+  id: string;
+  name: string;
+  color: string;
+  cursorPos: number;
+};
+
+type SyncStatus = 'CONNECTED' | 'CONNECTING' | 'DISCONNECTED';
+
 
 const FileExplorer: React.FC<FileExplorerProps> = ({ webContainerStatus, agent }) => {
     const [tree, setTree] = useState<FileSystemNode[]>([]);
@@ -22,11 +35,145 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ webContainerStatus, agent }
     const [actionError, setActionError] = useState<string | null>(null);
     
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const editorRef = useRef<HTMLTextAreaElement>(null);
 
     const [indexStatus, setIndexStatus] = useState<Map<string, VectorIndexStatus>>(new Map());
     const [searchQuery, setSearchQuery] = useState('');
     const [isSearching, setIsSearching] = useState(false);
     const [searchResults, setSearchResults] = useState<string | null>(null);
+
+    // Git State
+    const [isRepoInitialized, setIsRepoInitialized] = useState(false);
+    const [gitStatus, setGitStatus] = useState<string | null>(null);
+    const [currentBranch, setCurrentBranch] = useState<string | null>(null);
+    const [commitMessage, setCommitMessage] = useState('');
+    const [isGitLoading, setIsGitLoading] = useState<boolean>(false);
+
+    const [collaborators, setCollaborators] = useState<Collaborator[]>([
+        { id: 'stan', name: 'Stan', color: '#f0f', cursorPos: 25 }, // neon-pink
+        { id: 'lyra', name: 'Lyra', color: '#a0f', cursorPos: 80 }, // neon-purple
+    ]);
+    const [syncStatus, setSyncStatus] = useState<SyncStatus>('CONNECTED');
+
+    // Effect for simulating collaborator movement
+    useEffect(() => {
+        if (syncStatus !== 'CONNECTED' || !selectedNode) return;
+
+        const interval = setInterval(() => {
+            setCollaborators(prev => prev.map(c => {
+                const move = Math.random();
+                let newPos = c.cursorPos;
+                // 70% chance to move
+                if (move > 0.3) { 
+                    newPos += Math.floor(Math.random() * 10) - 5;
+                }
+                // Ensure cursor stays within bounds of the text content
+                return { ...c, cursorPos: Math.max(0, Math.min(editableContent.length, newPos)) };
+            }));
+        }, 800);
+
+        return () => clearInterval(interval);
+    }, [editableContent, syncStatus, selectedNode]);
+
+    const handleToggleSync = () => {
+        setSyncStatus(prev => {
+            const sequence: SyncStatus[] = ['CONNECTED', 'DISCONNECTED', 'CONNECTING'];
+            const currentIndex = sequence.indexOf(prev);
+            return sequence[(currentIndex + 1) % sequence.length];
+        });
+    };
+
+    // --- GIT COMMAND HANDLERS ---
+    const checkRepoStatus = useCallback(async () => {
+        setIsGitLoading(true);
+        try {
+            const statusOutput = await webcontainerService.runCommand('git', ['status']);
+            if (statusOutput.includes('fatal: not a git repository')) {
+                setIsRepoInitialized(false);
+                setCurrentBranch(null);
+                setGitStatus('Not a git repository. Click "Initialize Repository" to start.');
+            } else {
+                setIsRepoInitialized(true);
+                setGitStatus(statusOutput);
+                const branch = await webcontainerService.runCommand('git', ['branch', '--show-current']);
+                setCurrentBranch(branch.trim());
+            }
+        } catch (e) {
+            const errorMsg = e instanceof Error ? e.message : String(e);
+            setGitStatus(`An unexpected error occurred: ${errorMsg}`);
+            setIsRepoInitialized(false);
+        } finally {
+            setIsGitLoading(false);
+        }
+    }, []);
+
+    const handleGitInit = async () => {
+        setIsGitLoading(true);
+        setGitStatus(null);
+        try {
+            const output = await webcontainerService.runCommand('git', ['init']);
+            setGitStatus(output);
+            await checkRepoStatus();
+        } catch (e) {
+            setGitStatus(e instanceof Error ? e.message : 'Failed to initialize repository.');
+        } finally {
+            setIsGitLoading(false);
+        }
+    };
+
+    const handleGitStatus = useCallback(async () => {
+        setIsGitLoading(true);
+        try {
+            const status = await webcontainerService.runCommand('git', ['status']);
+            setGitStatus(status);
+        } catch (e) {
+            setGitStatus(e instanceof Error ? e.message : 'Failed to get git status.');
+        } finally {
+            setIsGitLoading(false);
+        }
+    }, []);
+
+    const handleGitAdd = async () => {
+        setIsGitLoading(true);
+        try {
+            await webcontainerService.runCommand('git', ['add', '.']);
+            await handleGitStatus();
+        } catch (e) {
+            setGitStatus(e instanceof Error ? e.message : 'Failed to stage files.');
+        } finally {
+            setIsGitLoading(false);
+        }
+    };
+
+    const handleGitCommit = async () => {
+        if (!commitMessage.trim()) {
+            setGitStatus('Commit message cannot be empty.');
+            return;
+        }
+        setIsGitLoading(true);
+        try {
+            const output = await webcontainerService.runCommand('git', ['commit', '-m', commitMessage]);
+            setGitStatus(output);
+            setCommitMessage('');
+            await handleGitStatus();
+        } catch (e) {
+            setGitStatus(e instanceof Error ? e.message : String(e));
+        } finally {
+            setIsGitLoading(false);
+        }
+    };
+
+    const handleGitAction = async (command: 'pull' | 'push') => {
+        setIsGitLoading(true);
+        try {
+            const output = await webcontainerService.runCommand('git', [command]);
+            setGitStatus(output);
+        } catch (e) {
+            setGitStatus(e instanceof Error ? e.message : `Failed to ${command}. No remote configured?`);
+        } finally {
+            setIsGitLoading(false);
+        }
+    };
 
     const initializeIndexStatus = useCallback((nodes: FileSystemNode[]) => {
         setIndexStatus(prevStatus => {
@@ -74,12 +221,14 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ webContainerStatus, agent }
     useEffect(() => {
         if (webContainerStatus === 'READY') {
             setIsLoading(true);
-            loadTree();
+            loadTree().then(() => {
+                checkRepoStatus();
+            });
         } else if (webContainerStatus !== 'BOOTING') {
             setIsLoading(false);
             setError(`File system is not available. Status: ${webContainerStatus}`);
         }
-    }, [webContainerStatus, loadTree]);
+    }, [webContainerStatus, loadTree, checkRepoStatus]);
 
     useEffect(() => {
         const loadFileContent = async () => {
@@ -148,6 +297,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ webContainerStatus, agent }
         setActionError(null);
         try {
             await webcontainerService.writeFile(selectedNode.path, editableContent);
+            if(isRepoInitialized) await handleGitStatus();
         } catch (e) {
             setActionError(e instanceof Error ? e.message : 'Failed to save file.');
         } finally {
@@ -262,6 +412,40 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ webContainerStatus, agent }
                     </div>
 
                     <div className="flex-shrink-0 bg-black/20 backdrop-blur-lg border border-white/10 rounded-lg p-4">
+                        <h3 className="text-lg font-bold text-neon-purple mb-2 drop-shadow-[0_0_5px_rgba(160,0,255,0.7)]">Version Control</h3>
+                        {isGitLoading && <div className="flex items-center gap-2 text-yellow-400"><Spinner /><span>Processing Git command...</span></div>}
+                        {!isGitLoading && (
+                            !isRepoInitialized ? (
+                                <button onClick={handleGitInit} className="bg-neon-purple hover:bg-opacity-80 text-black font-bold py-2 px-4 rounded transition-all shadow-md shadow-neon-purple/30 hover:shadow-lg hover:shadow-neon-purple/50">
+                                    Initialize Repository
+                                </button>
+                            ) : (
+                                <div className="space-y-3">
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="font-bold text-gray-300">Branch: <span className="text-neon-cyan font-mono">{currentBranch || '...'}</span></span>
+                                        <button onClick={handleGitStatus} className="bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold py-1.5 px-3 rounded">Refresh Status</button>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={handleGitAdd} disabled={isGitLoading} className="bg-gray-700 hover:bg-gray-600 text-white text-sm font-bold py-1.5 px-3 rounded disabled:bg-gray-800 disabled:text-gray-500">Stage All</button>
+                                        <button onClick={() => handleGitAction('pull')} disabled={isGitLoading} className="bg-gray-700 hover:bg-gray-600 text-white text-sm font-bold py-1.5 px-3 rounded disabled:bg-gray-800 disabled:text-gray-500">Pull</button>
+                                        <button onClick={() => handleGitAction('push')} disabled={isGitLoading} className="bg-gray-700 hover:bg-gray-600 text-white text-sm font-bold py-1.5 px-3 rounded disabled:bg-gray-800 disabled:text-gray-500">Push</button>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <input type="text" value={commitMessage} onChange={e => setCommitMessage(e.target.value)} placeholder="Commit message..." className="flex-1 bg-gray-800 border border-gray-600 rounded-md p-2 text-sm text-gray-300 focus:outline-none focus:ring-2 focus:ring-neon-lime font-mono" />
+                                        <button onClick={handleGitCommit} disabled={isGitLoading} className="bg-neon-lime hover:bg-opacity-80 text-black font-bold py-2 px-4 rounded transition-all shadow-md shadow-neon-lime/30 hover:shadow-lg hover:shadow-neon-lime/50 disabled:bg-gray-500 disabled:shadow-none">Commit</button>
+                                    </div>
+                                </div>
+                            )
+                        )}
+                        {gitStatus && (
+                            <div>
+                                <h4 className="text-xs font-bold uppercase text-gray-500 mt-3 mb-1">Git Status</h4>
+                                <CodeBlock content={gitStatus} />
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex-shrink-0 bg-black/20 backdrop-blur-lg border border-white/10 rounded-lg p-4">
                         <h3 className="text-lg font-bold text-neon-pink mb-2 drop-shadow-[0_0_5px_rgba(255,0,255,0.7)]">Vector Search</h3>
                         <form onSubmit={handleSearch} className="flex gap-2">
                             <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="e.g., 'summarize the project readme'" className="flex-1 bg-gray-800 border border-gray-600 rounded-md p-2 text-sm text-gray-300 focus:outline-none focus:ring-2 focus:ring-neon-pink" />
@@ -279,7 +463,13 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ webContainerStatus, agent }
                         {!isSearching && !searchResults && isFileSelected && (
                              <div className="h-full flex flex-col">
                                 <header className="p-3 border-b border-gray-700 flex justify-between items-center flex-shrink-0 bg-gray-900/50">
-                                    <h4 className="font-mono text-sm text-gray-300 truncate pr-4">{selectedNode.path}</h4>
+                                     <div className="flex items-center gap-4">
+                                        <h4 className="font-mono text-sm text-gray-300 truncate pr-4">{selectedNode.path}</h4>
+                                        <button onClick={handleToggleSync} className="text-xs font-bold text-white bg-gray-600 hover:bg-gray-500 px-2 py-1 rounded">
+                                            Toggle Sync
+                                        </button>
+                                        <SyncStatusIndicator status={syncStatus} />
+                                    </div>
                                     <div className="flex items-center gap-4">
                                         <button onClick={handleIndexFile} disabled={!canIndex} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 text-white font-bold py-1 px-3 rounded transition-colors text-xs">
                                             {currentStatus === 'INDEXING' ? 'Indexing...' : (currentStatus === 'INDEXED' ? 'Indexed' : 'Index File')}
@@ -289,12 +479,18 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ webContainerStatus, agent }
                                         </button>
                                     </div>
                                 </header>
-                                <textarea 
-                                    value={editableContent}
-                                    onChange={e => setEditableContent(e.target.value)}
-                                    className="flex-1 w-full bg-dark-bg text-gray-200 p-4 font-mono text-sm resize-none focus:outline-none"
-                                    spellCheck="false"
-                                />
+                                <div className="flex-1 relative">
+                                    {syncStatus === 'CONNECTED' && (
+                                      <CollaboratorCursors collaborators={collaborators} text={editableContent} textareaRef={editorRef} />
+                                    )}
+                                    <textarea 
+                                        ref={editorRef}
+                                        value={editableContent}
+                                        onChange={e => setEditableContent(e.target.value)}
+                                        className="absolute inset-0 w-full h-full bg-dark-bg text-gray-200 p-4 font-mono text-sm resize-none focus:outline-none"
+                                        spellCheck="false"
+                                    />
+                                </div>
                             </div>
                         )}
                         {!isSearching && !searchResults && !isFileSelected && (

@@ -12,13 +12,37 @@ if (!process.env.API_KEY) {
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const BUGGY_CODE_EXAMPLE = `
-function processItems(items) {
-  for (var i = 0; i < items.length; i++) {
+// This function is intended to fetch user data, then their posts, and log them.
+// It contains several common JavaScript pitfalls.
+async function fetchUserDataAndPosts(userIds) {
+  console.log('Starting data fetch...');
+
+  for (var i = 0; i < userIds.length; i++) {
+    // BUG 1: Closure issue with 'var' in a loop and async operations.
+    // The value of 'i' will be the final value when the inner function executes.
     setTimeout(function() {
-      console.log('Processing item ' + items[i].id); 
-    }, 100);
+      console.log('Preparing to fetch for user index:', i); // Will log the final index 'i' every time.
+      const userId = userIds[i]; // This will likely throw an error as userIds[i] will be undefined.
+      
+      // BUG 2: Unhandled promise rejection.
+      // If fetch fails (e.g., network error), it will crash the process if not caught.
+      fetch(\`https://api.example.com/users/\${userId}\`)
+        .then(res => res.json())
+        .then(user => {
+          console.log('Fetched user:', user.name);
+          
+          // BUG 3: Inefficiently fetching posts inside a loop (N+1 problem)
+          // and another unhandled promise.
+          fetch(\`https://api.example.com/posts?userId=\${user.id}\`)
+            .then(res => res.json())
+            .then(posts => {
+              console.log(\`Found \${posts.length} posts for \${user.name}\`);
+            });
+        });
+    }, 10 * i);
   }
-  return items;
+  
+  console.log('... all fetch requests initiated.');
 }
 `;
 

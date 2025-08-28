@@ -59,6 +59,7 @@ const ALL_TASKS: Task[] = [
   { id: 'rollout_plan', title: 'Staged Rollout Plan', description: 'Design a phased deployment strategy to minimize risk and gather user feedback.', status: 'PENDING', actionable: true, actionLabel: 'Generate Plan', phase: Phase.CONTROLLED_DEPLOYMENT },
   { id: 'monitor_plan', title: 'Monitoring & Alerting Strategy', description: 'Define key metrics, set up monitoring dashboards, and configure automated alerts.', status: 'PENDING', actionable: true, actionLabel: 'Generate Strategy', phase: Phase.CONTROLLED_DEPLOYMENT },
   { id: 'docs_plan', title: 'Documentation Framework', description: 'Create a framework and template for project documentation.', status: 'PENDING', actionable: true, actionLabel: 'Generate Framework', phase: Phase.CONTROLLED_DEPLOYMENT },
+  { id: 'blog_post_collab', title: 'Write Blog Post: Real-time Editing', description: 'Use Bravo to write a developer blog post about the new collaborative editing feature, using existing specs and pseudo-code.', status: 'PENDING', actionable: true, actionLabel: 'Write Post', phase: Phase.CONTROLLED_DEPLOYMENT },
 ];
 
 const HELP_TEXT = `AGENT & TASK COMMANDS:
@@ -660,6 +661,32 @@ const App: React.FC = () => {
                 case 'rollout_plan': result = await generateRolloutPlan(fullPersonalityPrompt, completedTaskContext); break;
                 case 'monitor_plan': result = await generateMonitoringStrategy(fullPersonalityPrompt, completedTaskContext); break;
                 case 'docs_plan': result = await generateDocumentationFramework(fullPersonalityPrompt, completedTaskContext); break;
+                case 'blog_post_collab': {
+                    const featureDescription = 'Real-time collaborative code editing using WebSockets';
+                    addMessage(`Orchestrating blog post for: "${featureDescription}"`, 'ORCHESTRATOR');
+
+                    const adam = getAgent('Adam')!;
+                    const stan = getAgent('Stan')!;
+                    const bravo = getAgent('Bravo')!;
+
+                    const adamPrompt = `${adam.personality_prompt}\n\n**SUPERVISOR INSTRUCTIONS:**\n${supervisorInstruction}`;
+                    const stanPrompt = `${stan.personality_prompt}\n\n**SUPERVISOR INSTRUCTIONS:**\n${supervisorInstruction}`;
+                    const bravoPrompt = `${bravo.personality_prompt}\n\n**SUPERVISOR INSTRUCTIONS:**\n${supervisorInstruction}`;
+
+                    addMessage(`Adam is drafting the feature spec...`, 'AI', adam.name);
+                    const spec = await generateFeatureSpec(featureDescription, adamPrompt);
+
+                    addMessage(`Stan is generating the pseudo-code...`, 'AI', stan.name);
+                    const pseudo = await generatePseudoCode(spec, stanPrompt);
+                    
+                    addMessage(`Bravo is writing the blog post...`, 'AI', bravo.name);
+                    result = await writeDevBlogPost(featureDescription, spec, pseudo, bravoPrompt);
+
+                    const fileName = `/docs/blog-real-time-collab.md`;
+                    await webcontainerService.writeFile(fileName, result);
+                    addMessage(`Blog post saved to ${fileName}.`, 'SYSTEM');
+                    break;
+                }
                 case 'create_container': {
                     const containerName = prompt("Enter a name for the new container:", "CASSA-VEGAS-Container");
                     if (!containerName) {

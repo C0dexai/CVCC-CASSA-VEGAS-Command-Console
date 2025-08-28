@@ -1,4 +1,5 @@
 
+
 import { WebContainer } from '@webcontainer/api';
 import type { FileSystemNode, WebContainerStatus } from '../types';
 import JSZip from 'jszip';
@@ -250,6 +251,17 @@ class WebContainerService {
     return WebContainerService.instance;
   }
   
+  private async _configureGit(): Promise<void> {
+    if (this.isMock) return;
+    const wc = await this.ensureReady();
+    try {
+      await wc.spawn('git', ['config', '--global', 'user.name', 'CASSA VEGAS']);
+      await wc.spawn('git', ['config', '--global', 'user.email', 'contact@cassavegas.com']);
+    } catch (e) {
+        console.error("Failed to configure git:", e);
+    }
+  }
+
   public async boot(statusCallback: (status: WebContainerStatus, isMock: boolean) => void): Promise<void> {
     if (this.webcontainerInstance) {
       statusCallback('READY', false);
@@ -274,6 +286,7 @@ class WebContainerService {
 
     try {
       this.webcontainerInstance = await WebContainer.boot();
+      await this._configureGit();
       await this.writeFile('/README.md', '# CASSA VEGAS Command Console\nWelcome to the file system.');
       await this.makeDir('/docs/guides');
       await this.writeFile('/docs/getting-started.md', '## Getting Started\nUse the commands to navigate and manage files.');
